@@ -48,7 +48,7 @@ def prepare_data(src = "../data/train.csv", SEED = 42):
 
     return X_train, y_train, X_val, y_val, X_test, y_test
 
-def correlation_matrix(X, y):
+def correlation_matrix1(X, y):
     # rimetto l'sii come prima colonna per calcolare la correlazione
     X_temp = X.copy()
     X_temp.insert(0, column="Sii", value=y)
@@ -121,7 +121,7 @@ def feature_importance_and_mutual_info_originale(X, y, SEED):
     plt.grid(True)
     plt.show()
 
-def feature_importance_and_mutual_info(X, y, SEED):
+def feature_importance_and_mutual_info(X, y, SEED, volta):
 
     # inizio con il calcolo delle feature importances
     kf = StratifiedKFold(n_splits=5, shuffle=True, random_state=SEED)
@@ -173,14 +173,28 @@ def feature_importance_and_mutual_info(X, y, SEED):
 
     plt.tight_layout()
     plt.show()
+    if volta == 1:
+        nan_1 = mi_series[nan_ratio > 0.25]
+        print("Feature con NaN ratio > 0.25:")
+        print(nan_1)
 
-    nan_1 = mi_series[nan_ratio > 0.25]
-    print("Feature con NaN ratio > 0.25:")
-    print(nan_1)
+        mi_high_sorted = mi_series[mi_series > 0.2].sort_values(ascending=False)
+        print("\nFeature con alta mutual information, ordinate in modo decrescente:")
+        print(mi_high_sorted)
 
-    mi_high_sorted = mi_series[mi_series > 0.2].sort_values(ascending=False)
-    print("\nFeature con alta mutual information, ordinate in modo decrescente:")
-    print(mi_high_sorted)
+    elif volta == 2:
+        # creo un dataframe temporaneo per visualizzare le feature con NaN ratio > 0.8 e la loro mutual information
+        nan_1_df = pd.DataFrame({
+            'NaN ratio': nan_ratio[nan_ratio > 0.8],
+            'Mutual Info': mi_series[nan_ratio > 0.8]
+        }).sort_values(by='NaN ratio', ascending=False)
+
+        print("Feature con NaN ratio > 0.8:")
+        print(nan_1_df)
+
+        mi_high_sorted = mi_series[mi_series > 0.06].sort_values(ascending=False)
+        print("\nFeature con alta mutual information, ordinate in modo decrescente:")
+        print(mi_high_sorted)
     return feat_importance_cv, feat_importance_cv_sorted
 
 def augment_data(src = "../data/train.csv", dst = "../data/", SEED = 42):
@@ -260,51 +274,63 @@ def augment_data(src = "../data/train.csv", dst = "../data/", SEED = 42):
     print("Dataset salvati in formato CSV nella cartella 'data/'.")
     return X_train_final, y_train_final, X_test, y_test
 
-def backward_elimination(X, y, feat_importance_cv, feat_importance_cv_sorted, SEED=42, dst = "../data/"):
+def correlation_matrix2(X, y):
+       # Calcolo matrice di correlazione (con il target)
+    X_temp = X.copy()
+    X_temp.insert(0, column="Sii", value=y)
+
+    f, ax = plt.subplots(figsize=(10, 8))
+    corr = X_temp.corr()
+    sns.heatmap(corr,
+        cmap=sns.diverging_palette(220, 10, as_cmap=True),
+        vmin=-1.0, vmax=1.0,
+        square=True, ax=ax)
+def backward_elimination(X, y, feat_importance_cv, feat_importance_cv_sorted, SEED=42, dst="../data/"):
     X_be = X.copy()
     y_be = y.copy()
     features = list(feat_importance_cv_sorted.index)
 
     base_model = RandomForestClassifier(random_state=SEED)
-    scores, n_features = [], []
+    scores_acc, n_features = [], []
 
     # Loop backward
     while len(features) > 1:
         X_current = X_be[features]
-        score = cross_val_score(clone(base_model), X_current, y_be, cv=5, scoring='accuracy').mean()
-        scores.append(score)
+        acc = cross_val_score(clone(base_model), X_current, y_be, cv=5, scoring='accuracy').mean()
+        scores_acc.append(acc)
         n_features.append(len(features))
 
         feat_importance_sub = feat_importance_cv[features]
         worst_feature = feat_importance_sub.idxmin()
         features.remove(worst_feature)
 
-    # Calcolo RMSE
+    # Calcolo RMSE (usando sempre X,y passati alla funzione)
     rmse = []
     for f in range(1, len(feat_importance_cv_sorted)):
         rf_small = RandomForestClassifier(random_state=SEED)
-        scores = cross_val_score(
+        cv_scores = cross_val_score(
             rf_small,
             X[feat_importance_cv_sorted.index[:f]],
             y,
             cv=5,
             scoring='neg_root_mean_squared_error'
         )
-        rmse.append(-scores.mean())
+        rmse.append(-cv_scores.mean())
 
     # === Grafici affiancati ===
     fig, axes = plt.subplots(1, 2, figsize=(16, 6))
 
     # SX: andamento accuracy
-    axes[0].plot(n_features, scores, marker='o')
+    axes[0].plot(n_features, scores_acc, marker='o')
     axes[0].set_xlabel("Numero di feature")
     axes[0].set_ylabel("Accuracy (CV)")
-    axes[0].set_title("Backward Feature Elimination (Accuracy)")
+    axes[0].set_title("Backward Feature Elimination (RandomForest)")
     axes[0].invert_xaxis()
     axes[0].grid(True)
 
     # DX: andamento RMSE
-    axes[1].plot(range(1, len(feat_importance_cv_sorted)), rmse, 'o-', label="RMSE")
+    x_rmse = list(range(1, len(feat_importance_cv_sorted)))
+    axes[1].plot(x_rmse, rmse, 'o-')
     axes[1].set_title("RMSE on varying features")
     axes[1].set_xlabel("Number of Best features used")
     axes[1].set_ylabel("RMSE")
@@ -319,7 +345,7 @@ def backward_elimination(X, y, feat_importance_cv, feat_importance_cv_sorted, SE
     for i, f in enumerate(top11_features, 1):
         print(f"{i}. {f}")
 
-    X_be =  X_be[top11_features].copy()
+    X_be = X_be[top11_features].copy()
     X_be.to_csv(f"{dst}X_train_final.csv", index=False)
     print("'data/X_train_final.csv' sovrascritto coi nuovi dati.")
     return X_be
