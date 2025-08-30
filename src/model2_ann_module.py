@@ -16,8 +16,7 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.metrics import accuracy_score
 import keras_tuner as kt
-import tensorflow as tf
-
+from tensorflow.keras.models import load_model
 
 def prepare_X (X_tr, X_val, y_tr, y_val, SEED):
     tf.random.set_seed(SEED)
@@ -138,7 +137,7 @@ def run_nn (X, Xv, y, yv, _num_features = 11, _num_classes = 4, hidden_units=[64
         batch_size=batch_size, # numero di campioni per batch
         class_weight=weights, # pesi classi
         callbacks=callbacks, 
-        verbose=1
+        verbose=0
     )
 
     # ----------------------
@@ -147,7 +146,7 @@ def run_nn (X, Xv, y, yv, _num_features = 11, _num_classes = 4, hidden_units=[64
 
     print("training terminato")
 
-    plt.figure(figsize=(12,4))
+    plt.figure(figsize=(5,3))
     plt.subplot(1,2,1)
     plt.plot(history.history['loss'], label='train loss')
     plt.plot(history.history['val_loss'], label='val loss')
@@ -188,7 +187,7 @@ def run_nn (X, Xv, y, yv, _num_features = 11, _num_classes = 4, hidden_units=[64
 
     # --- Confusion matrix ---
     cm = confusion_matrix(yv, y_val_pred)
-    plt.figure(figsize=(6,5))
+    plt.figure(figsize=(5,3))
     sns.heatmap(cm, annot=True, fmt='d', cmap='Blues',
                 xticklabels=classes, yticklabels=classes)
     plt.xlabel('Predicted')        # asse X: predizioni
@@ -200,6 +199,8 @@ def run_nn (X, Xv, y, yv, _num_features = 11, _num_classes = 4, hidden_units=[64
         # --- Recall specifico per classe 3 ---
         rec_severe = recall_score(yv, y_val_pred, labels=[3], average='macro')
         print(f"Recall classe severe (3): {rec_severe:.4f}")
+    
+    return model
 
 def impute_missing_values(X_tr, X_val, SEED):
     # Usa IterativeImputer con RandomForestRegressor per imputare i valori mancanti
@@ -257,7 +258,7 @@ def rf_cascade(X_tr, y_tr, X_val, y_val, SEED):
     print(f"TRAIN Accuracy RF: {acc_train:.4f}")
     print(f"VAL Accuracy RF: {acc_val:.4f}")
 
-    plt.figure(figsize=(6,5))
+    plt.figure(figsize=(5,3))
     sns.heatmap(cm_val, annot=True, fmt='d', cmap='Blues', xticklabels=['A','B'], yticklabels=['A','B'])
     plt.xlabel("Predicted")
     plt.ylabel("True")
@@ -380,9 +381,31 @@ def tune_hyperparameters(X_tr, y_tr, X_val, y_val, _num_features, _num_classes, 
             tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=25, min_lr=1e-6)
         ],
         class_weight=weights,
-        verbose=1
+        verbose=0
     )
 
     final_model.save('neural_network_tuned_model.h5')
 
-    return final_model
+    return X_tr_full, y_tr_full, final_model
+
+
+def test_ann_pipeline(X_train, y_train, X_test, y_test, SEED, final_model, classes=["0","1","2","3"]):
+    # imputazione + scaling
+    X_train_scaled, X_test_scaled = impute_missing_values(X_train, X_test, SEED)
+
+    # RF cascade
+    X_train_aug, X_test_aug, n_features_aug = rf_cascade(X_train_scaled, y_train, X_test_scaled, y_test, SEED)
+
+    # predizione sul test
+    y_pred_proba = final_model.predict(X_test_aug)
+    y_pred = np.argmax(y_pred_proba, axis=1)
+
+    print("=== ANN Ensemble - Classification Report (Test) ===")
+    print(classification_report(y_test, y_pred, digits=4))
+    cm = confusion_matrix(y_test, y_pred)
+    sns.heatmap(cm, annot=True, fmt="d", cmap="Blues",
+                xticklabels=classes, yticklabels=classes)
+    plt.xlabel("Predicted")
+    plt.ylabel("True")
+    plt.title("ANN Confusion Matrix (Test)")
+    plt.show()

@@ -70,7 +70,7 @@ def correlation_matrix1(X, y):
     X_train_filtered = X[selected_features]
 
     # disegno la heatmap
-    f, ax = plt.subplots(figsize=(10, 8))
+    f, ax = plt.subplots(figsize=(5, 4))
     corr = X_train_filtered.corr()
     sns.heatmap(corr,
         cmap=sns.diverging_palette(220, 10, as_cmap=True),
@@ -98,7 +98,7 @@ def feature_importance_and_mutual_info_originale(X, y, SEED):
     feat_importance_cv_sorted = feat_importance_cv.sort_values(ascending=False)
 
     # Visualizza le feature importances nel grafico di sinistra
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(5, 3))
     sns.barplot(x=feat_importance_cv_sorted, y=feat_importance_cv_sorted.index, palette="viridis")
     plt.title("Feature Importances (RandomForest + Cross-Validation)")
     plt.xlabel("Average Importance Score")
@@ -113,7 +113,7 @@ def feature_importance_and_mutual_info_originale(X, y, SEED):
     mi = mutual_info_classif(X_train_mi.fillna(-9999), Y_train_mi)
     mi_series = pd.Series(mi, index=X_train_mi.columns)
     nan_ratio = X_train_mi.isnull().mean()
-    plt.figure(figsize=(10, 6))
+    plt.figure(figsize=(5, 3))
     sns.scatterplot(x=nan_ratio, y=mi_series)
     plt.xlabel("NaN ratio")
     plt.ylabel("Mutual Information con la classe")
@@ -121,7 +121,7 @@ def feature_importance_and_mutual_info_originale(X, y, SEED):
     plt.grid(True)
     plt.show()
 
-def feature_importance_and_mutual_info(X, y, SEED, volta):
+def feature_importance_and_mutual_info(X, y, SEED):
 
     # inizio con il calcolo delle feature importances
     kf = StratifiedKFold(n_splits=5, shuffle=True, random_state=SEED)
@@ -173,28 +173,6 @@ def feature_importance_and_mutual_info(X, y, SEED, volta):
 
     plt.tight_layout()
     plt.show()
-    if volta == 1:
-        nan_1 = mi_series[nan_ratio > 0.25]
-        print("Feature con NaN ratio > 0.25:")
-        print(nan_1)
-
-        mi_high_sorted = mi_series[mi_series > 0.2].sort_values(ascending=False)
-        print("\nFeature con alta mutual information, ordinate in modo decrescente:")
-        print(mi_high_sorted)
-
-    elif volta == 2:
-        # creo un dataframe temporaneo per visualizzare le feature con NaN ratio > 0.8 e la loro mutual information
-        nan_1_df = pd.DataFrame({
-            'NaN ratio': nan_ratio[nan_ratio > 0.8],
-            'Mutual Info': mi_series[nan_ratio > 0.8]
-        }).sort_values(by='NaN ratio', ascending=False)
-
-        print("Feature con NaN ratio > 0.8:")
-        print(nan_1_df)
-
-        mi_high_sorted = mi_series[mi_series > 0.06].sort_values(ascending=False)
-        print("\nFeature con alta mutual information, ordinate in modo decrescente:")
-        print(mi_high_sorted)
     return feat_importance_cv, feat_importance_cv_sorted
 
 def augment_data(src = "../data/train.csv", dst = "../data/", SEED = 42):
@@ -269,8 +247,8 @@ def augment_data(src = "../data/train.csv", dst = "../data/", SEED = 42):
     # Salviamo i dataset finali
     X_train_final.to_csv(f"{dst}X_train_final.csv", index=False)
     y_train_final.to_csv(f"{dst}y_train_final.csv", index=False)
-    X_test.to_csv(f"{dst}X_test_final.csv", index=False)
-    y_test.to_csv(f"{dst}y_test_final.csv", index=False)
+    X_test.to_csv(f"{dst}X_test_final.csv", index=True)
+    y_test.to_csv(f"{dst}y_test_final.csv", index=True)
     print("Dataset salvati in formato CSV nella cartella 'data/'.")
     return X_train_final, y_train_final, X_test, y_test
 
@@ -318,7 +296,7 @@ def backward_elimination(X, y, feat_importance_cv, feat_importance_cv_sorted, SE
         rmse.append(-cv_scores.mean())
 
     # === Grafici affiancati ===
-    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
+    fig, axes = plt.subplots(1, 2, figsize=(10, 3))
 
     # SX: andamento accuracy
     axes[0].plot(n_features, scores_acc, marker='o')
@@ -348,4 +326,4 @@ def backward_elimination(X, y, feat_importance_cv, feat_importance_cv_sorted, SE
     X_be = X_be[top11_features].copy()
     X_be.to_csv(f"{dst}X_train_final.csv", index=False)
     print("'data/X_train_final.csv' sovrascritto coi nuovi dati.")
-    return X_be
+    return X_be, top11_features
