@@ -1,5 +1,9 @@
 # data-web-mining-project
 Progetto per il corso di Data and Web Mining, in coppia con @gabibbo03. 
+* Specifica del progetto: `./2024 DWM project.pdf`
+* Relazione finale del progetto: `./Report Finale.pdf`
+* codici python: `./src/`. Nello specifico, `data_cleaning.ipynb` è il primo notebook su cui abbiamo lavorato, per poi spostarci su `main.ipynb`. gli altri file `.py` sono i moduli con le funzioni usate nei due notebook. Non è pensato per essere scalabile/modulare o comunque "buon" codice pulito, è funzionale al progetto e basta, le funzioni sono solo il copincolla del ccodice precedentemente scritto tutto di fila sul notebook.
+* miglior modello di rete neurale trovato: `/src/neural_network_tuned_model.h5`. In `./my_keras_tuner` si possono trovare tutti gli altri modelli esplorati durante l'hyperparameter tuning automatico
 
 # dataset description (Kaggle)
 The Healthy Brain Network (HBN) dataset is a clinical sample of about five-thousand 5-22 year-olds who have undergone both clinical and research screenings. The objective of the HBN study is to find biological markers that will improve the diagnosis and treatment of mental health and learning disorders from an objective biological perspective. Two elements of this study are being used for this competition: physical activity data (wrist-worn accelerometer data, fitness assessments and questionnaires) and internet usage behavior data. The goal of this competition is to predict from this data a participant's Severity Impairment Index (sii), a standard measure of problematic internet use.
