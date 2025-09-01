@@ -115,19 +115,7 @@ def tune_and_train_xgboost(X_train, y_train, X_val, y_val, num_classes, n_trials
 
 def test_xgboost(model, X_test, y_test, classes=["0","1","2","3"], SEED=42):
 
-    X_test = season_map(X_test)
-    Imputer = IterativeImputer(
-        estimator=RandomForestRegressor(n_estimators=50, random_state=SEED),
-        max_iter=10,
-        random_state=SEED
-    )
-
-    X_test_imputed = Imputer.fit_transform(X_test)
-
-    scaler = StandardScaler()
-    X_test_scaled = scaler.fit_transform(X_test_imputed)
-
-    y_pred = model.predict(X_test_scaled)
+    y_pred = model.predict(X_test)
     print("=== XGBoost - Classification Report (Test) ===")
     print(classification_report(y_test, y_pred, digits=4))
     cm = confusion_matrix(y_test, y_pred)

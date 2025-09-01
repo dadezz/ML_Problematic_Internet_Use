@@ -39,8 +39,9 @@ def prepare_X (X_tr, X_val, y_tr, y_val, SEED):
                                         y=y_tr)
     class_weights = {cls: w for cls, w in zip(classes, auto_weights)}
 
-    return X_tr_scaled, X_val_scaled, class_weights
+    return X_tr_scaled, X_val_scaled, class_weights, scaler
 
+#funzione usata durante il training in modo iterativo, non più presente nel main
 def build_model(n_features,
                 n_classes = 4,
                 hidden_units=[64,32],
@@ -81,7 +82,7 @@ def build_model(n_features,
     
     return model
 
-
+#funzione usata durante il training in modo iterativo, non più presente nel main
 def run_nn (X, Xv, y, yv, _num_features = 11, _num_classes = 4, hidden_units=[64,32], activation='relu', lr=1e-4, dropout=0, l2_reg=0, patience_early_stopping = 50, patience_reduce_lr = 6, factor = 0.5, min_lr=1e-6, epochs = 500, batch_size=32, loss_case_binary = "binary_crossentropy", loss_case_multiclass = "sparse_categorical_crossentropy", loss_case_regression="mse", metrics=['accuracy', ], weights = None, classes = ["0","1","2","3"]):
     """"
     * _num_features: int, numero di feature in input
@@ -202,7 +203,7 @@ def run_nn (X, Xv, y, yv, _num_features = 11, _num_classes = 4, hidden_units=[64
     
     return model
 
-def impute_missing_values(X_tr, X_val, SEED):
+def impute_missing_values(X_tr, X_val, SEED, scaler):
     # Usa IterativeImputer con RandomForestRegressor per imputare i valori mancanti
     imputer = IterativeImputer(
         estimator=RandomForestRegressor(n_estimators=50, random_state=SEED),
@@ -212,24 +213,23 @@ def impute_missing_values(X_tr, X_val, SEED):
     X_tr_imputed = imputer.fit_transform(X_tr)
     X_val_imputed = imputer.transform(X_val)
     
-    # eseguo quindi la standardizzazione
-    scaler = StandardScaler()
     X_tr_scaled = scaler.fit_transform(X_tr_imputed)
     X_val_scaled = scaler.transform(X_val_imputed)
     
-    return X_tr_scaled, X_val_scaled
+    return X_tr_scaled, X_val_scaled, imputer
 
-def rf_cascade(X_tr, y_tr, X_val, y_val, SEED):
+
+def rf_cascade(X_tr, y_tr, X_val, y_val, SEED, rf = None):
     # y come classe binaria
     y_bin_tr = np.where(np.isin(y_tr, [0, 1]), 0, 1)
     y_bin_val = np.where(np.isin(y_val, [0, 1]), 0, 1)
-
-    rf = RandomForestClassifier(
-        random_state=SEED,
-        class_weight='balanced',
-        n_estimators=100,
-        max_depth=10
-    )
+    if rf is None:
+        rf = RandomForestClassifier(
+            random_state=SEED,
+            class_weight='balanced',
+            n_estimators=100,
+            max_depth=10
+        )
     rf.fit(X_tr, y_bin_tr)
 
     # Predizione RF: probabilità
@@ -273,7 +273,13 @@ def rf_cascade(X_tr, y_tr, X_val, y_val, SEED):
     print("Shape train:", X_bin_tr.shape)
     print("Shape val:", X_bin_val.shape)
 
-    return X_bin_tr, X_bin_val, n_features_aug
+    return X_bin_tr, X_bin_val, n_features_aug, rf
+
+def rf_cascade_predict(X_test, rf):
+    rf_probs_test = rf.predict_proba(X_test)[:,1].reshape(-1,1)
+    X_bin_test = np.hstack([X_test, rf_probs_test])
+    return X_bin_test
+
 
 def tune_hyperparameters(X_tr, y_tr, X_val, y_val, _num_features, _num_classes, weights):
     """
@@ -365,19 +371,14 @@ def tune_hyperparameters(X_tr, y_tr, X_val, y_val, _num_features, _num_classes, 
     final_model = tuner.hypermodel.build(best_hps)
 
 
-    # Ora addestra questo modello finale su TUTTI i dati di training (training + validation)
-    # per dargli più dati possibili prima del test finale.
-    X_tr_full = np.concatenate([X_tr, X_val])
-    y_tr_full = np.concatenate([y_tr, y_val])
-
     print("\n💪 Addestramento del modello finale con i parametri ottimali...")
 
     history = final_model.fit(
-        X_tr_full, y_tr_full,
+        X_tr, y_tr,
         epochs=500, # Addestra per più epoche, l'early stopping si occuperà di fermarsi
         validation_data=(X_val, y_val),
         callbacks=[
-            tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=75),
+            tf.keras.callbacks.EarlyStopping(monitor='val_loss', patience=75, restore_best_weights=True),
             tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=25, min_lr=1e-6)
         ],
         class_weight=weights,
@@ -386,15 +387,12 @@ def tune_hyperparameters(X_tr, y_tr, X_val, y_val, _num_features, _num_classes, 
 
     final_model.save('neural_network_tuned_model.h5')
 
-    return X_tr_full, y_tr_full, final_model
+    return final_model
 
 
-def test_ann_pipeline(X_train, y_train, X_test, y_test, SEED, final_model, classes=["0","1","2","3"]):
-    # imputazione + scaling
-    X_train_scaled, X_test_scaled = impute_missing_values(X_train, X_test, SEED)
-
-    # RF cascade
-    X_train_aug, X_test_aug, n_features_aug = rf_cascade(X_train_scaled, y_train, X_test_scaled, y_test, SEED)
+def test_ann_pipeline(X_test, y_test, final_model, rf, classes=["0","1","2","3"]):
+    # RF cascade per ottenere la feature aggiuntiva sul test
+    X_test_aug = rf_cascade_predict(X_test, rf)
 
     # predizione sul test
     y_pred_proba = final_model.predict(X_test_aug)
